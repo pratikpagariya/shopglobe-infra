@@ -1,0 +1,31 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+.terraformrc
+terraform.rc
+
+# Variable files carry secrets and account IDs. Commit only *.example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Partial backend config -- account-specific
+backend.hcl
+
+# Lock file: DO commit this. Pinned provider hashes = reproducible builds.
+!.terraform.lock.hcl
+
+# Local
+.env
+*.pem
+*.key
+kubeconfig*
+.DS_Store

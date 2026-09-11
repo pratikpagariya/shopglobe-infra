@@ -1,0 +1,5 @@
+# cp backend.tfvars.example backend.tfvars  (backend.tfvars is gitignored)
+alert_email        = "pratikpagariya30@gmail.com"
+monthly_budget_usd = 150
+region             = "ap-south-1"
+owner              = "pratik"

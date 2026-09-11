@@ -1,0 +1,101 @@
+global:
+  scrape_interval:     15s   # how often to pull. Lower = more resolution AND more series.
+  scrape_timeout:      10s   # must be < scrape_interval or scrapes pile up
+  evaluation_interval: 15s   # how often rules run
+
+  # Stamped on every metric leaving this server. Identifies the SERVER, not the
+  # target -- this is how you tell two Prometheus instances apart.
+  external_labels:
+    env: legacy
+    region: ap-south-1
+
+scrape_configs:
+
+  # 1. Prometheus scraping itself. static_configs = a literal list of host:port.
+  #    No discovery, no relabeling. The simplest form that exists.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. node_exporter -- host CPU/mem/disk/network.
+  #    ec2_sd_configs calls DescribeInstances (that is exactly what the mon IAM
+  #    role grants) and turns every matching instance into a target.
+  - job_name: node
+    ec2_sd_configs:
+      - region: ap-south-1
+        port: 9100
+        filters:
+          - name: tag:Role
+            values: [app]
+          - name: instance-state-name
+            values: [running]      # without this you scrape terminated hosts
+
+    # Discovery attaches __meta_ec2_* labels, then THROWS THEM AWAY unless you
+    # copy them into real labels here. Most misunderstood thing in Prometheus.
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: private_ip
+
+  # 3-5. Three services, three ports, therefore three jobs -- ec2_sd_configs
+  #      sets ONE port per job. This repetition is the lesson: on Kubernetes a
+  #      single ServiceMonitor replaces all of it, because pods get their own
+  #      IPs and you stop hand-assigning ports.
+  - job_name: edge-gateway
+    metrics_path: /metrics
+    ec2_sd_configs:
+      - region: ap-south-1
+        port: 8000
+        filters:
+          - name: tag:Role
+            values: [app]
+          - name: instance-state-name
+            values: [running]
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+
+  - job_name: auth-svc
+    metrics_path: /metrics
+    ec2_sd_configs:
+      - region: ap-south-1
+        port: 8001
+        filters:
+          - name: tag:Role
+            values: [app]
+          - name: instance-state-name
+            values: [running]
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+
+  - job_name: catalog-svc
+    metrics_path: /metrics
+    ec2_sd_configs:
+      - region: ap-south-1
+        port: 8002
+        filters:
+          - name: tag:Role
+            values: [app]
+          - name: instance-state-name
+            values: [running]
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+
+    # relabel_configs runs BEFORE the scrape (which targets, what labels).
+    # metric_relabel_configs runs AFTER (which metrics you keep). This is how
+    # you kill a high-cardinality metric without touching the application.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'python_gc_.*'
+        action: drop
