@@ -27,7 +27,7 @@ data "aws_caller_identity" "current" {}
 # Account ID is looked up, never hardcoded -- these repos are public, and it
 # also makes the code portable to another account with no edits.
 locals {
-  account_id     = data.aws_caller_identity.current.account_id
-  state_bucket   = "shopglobe-tfstate-${local.account_id}"
-  lock_table     = "shopglobe-tflock"
+  account_id   = data.aws_caller_identity.current.account_id
+  state_bucket = "shopglobe-tfstate-${local.account_id}"
+  lock_table   = "shopglobe-tflock"
 }

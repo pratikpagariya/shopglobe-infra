@@ -58,8 +58,8 @@ resource "aws_s3_bucket_policy" "state_tls_only" {
 
 resource "aws_dynamodb_table" "lock" {
   name         = local.lock_table
-  billing_mode = "PAY_PER_REQUEST"   # a few writes a day; on-demand is cents
-  hash_key     = "LockID"            # the name is fixed -- Terraform requires it
+  billing_mode = "PAY_PER_REQUEST" # a few writes a day; on-demand is cents
+  hash_key     = "LockID"          # the name is fixed -- Terraform requires it
 
   attribute {
     name = "LockID"
