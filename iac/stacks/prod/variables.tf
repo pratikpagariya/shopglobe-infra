@@ -47,6 +47,16 @@ variable "node_groups" {
   }))
 }
 
+variable "db_instance_class" {
+  type    = string
+  default = "db.t4g.micro"
+}
+
+variable "rds_multi_az" {
+  type    = bool
+  default = false # cost lever. true for the one full-fidelity run.
+}
+
 variable "admin_role_name" {
   type        = string
   description = "IAM role that gets cluster-admin via an Access Entry."

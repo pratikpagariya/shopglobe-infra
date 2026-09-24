@@ -54,6 +54,105 @@ resource "aws_iam_role" "viewer" {
   })
 }
 
+# Terraform WILL see this password and it WILL be in state. That is the known
+# tradeoff, and it is why the state bucket is encrypted, versioned and access-
+# restricted. Putting it in Secrets Manager means External Secrets pulls it
+# into the cluster, so it never reaches a manifest or a git repo.
+resource "random_password" "db" {
+  length  = 32
+  special = false # some AWS engines reject characters that also break URIs
+}
+
+resource "aws_secretsmanager_secret" "db" {
+  name                    = "shopglobe/${var.environment}/catalog-db"
+  recovery_window_in_days = 0 # 0 = delete immediately; 7-30 in real prod
+}
+
+resource "aws_secretsmanager_secret_version" "db" {
+  secret_id = aws_secretsmanager_secret.db.id
+  secret_string = jsonencode({
+    username = "shop"
+    password = random_password.db.result
+    host     = module.rds.db_host
+    port     = 5432
+    dbname   = "shopglobe"
+  })
+}
+
+module "rds" {
+  source = "../../modules/rds"
+
+  project     = "shopglobe"
+  environment = var.environment
+  identifier  = "catalog"
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.db_subnet_ids
+
+  engine                 = "postgres"
+  engine_version         = "16"
+  instance_class         = var.db_instance_class
+  parameter_group_family = "postgres16"
+
+  db_parameters = [
+    {
+      name  = "max_connections"
+      value = "100"
+      # STATIC parameter -- Postgres reads it only at startup, so it needs a
+      # reboot. Leaving this "immediate" makes RDS reject the apply.
+      # Deliberately low: scaling past ~14 replicas exhausts it, which is the
+      # pool_size x workers x replicas lesson made concrete.
+      apply_method = "pending-reboot"
+    },
+    {
+      name  = "log_min_duration_statement"
+      value = "200"
+      # DYNAMIC -- takes effect without a restart, so the default
+      # apply_method = "immediate" is correct. This is how you find the N+1.
+    },
+  ]
+
+  allocated_storage = 20
+  storage_type      = "gp3"
+  storage_encrypted = true
+
+  db_name     = "shopglobe"
+  db_username = "shop"
+  db_password = random_password.db.result
+
+  # TWO security groups, deliberately. EKS automatically creates its own
+  # cluster security group and attaches it to managed node group instances,
+  # IN ADDITION to anything this module defines. Pod egress carries the
+  # EKS-managed one, so allowing only the module's node SG produces a silent
+  # connection timeout that looks like a routing problem.
+  allowed_security_group_ids = [
+    module.eks.node_security_group_id,
+    module.eks.eks_managed_cluster_security_group_id,
+  ]
+
+  multi_az                = var.rds_multi_az
+  backup_retention_period = 1
+  skip_final_snapshot     = true  # demo stack only
+  deletion_protection     = false # true in real prod
+  apply_immediately       = true
+
+  tags = {}
+}
+
+module "sqs_payments" {
+  source = "../../modules/sqs"
+
+  project     = "shopglobe"
+  environment = var.environment
+  queue_name  = "payments"
+
+  # payment-worker takes ~0.4s worst case. 30s is ~75x headroom.
+  visibility_timeout_seconds = 30
+  max_receive_count          = 3
+
+  tags = {}
+}
+
 
 module "eks" {
   source     = "../../modules/eks"
@@ -172,7 +271,7 @@ module "eks" {
               "ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart",
               "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer",
             ]
-            Resource = "arn:aws:ecr:${var.region}:${local.account_id}:repository/shopglobe/*"
+            Resource = "arn:aws:ecr:${var.region}:${local.account_id}:repository/shopglobe-${var.environment}-*"
           },
         ]
       })
@@ -192,7 +291,13 @@ module "ecr" {
     for s in [
       "edge-gateway", "auth-svc", "catalog-svc", "cart-svc",
       "order-svc", "payment-worker", "notify-svc", "media-svc", "jenkins",
-    ] : "shopglobe/${s}" => {}
+      ] : s => {
+      # A tag can never be re-pointed. This is what makes "which code is
+      # running?" answerable -- with mutable tags, two pods claiming the same
+      # version can be running different code and you cannot reproduce a bug.
+      image_tag_mutability = "IMMUTABLE"
+      scan_on_push         = true
+    }
   }
 
   apply_default_lifecycle_policy = true

@@ -66,3 +66,10 @@ output "oidc_issuer" {
   description = "OIDC issuer URL (reference only; Pod Identity does not use it)"
   value       = aws_eks_cluster.this.identity[0].oidc[0].issuer
 }
+
+# EKS creates this automatically and attaches it to managed node group
+# instances -- it is NOT the SG this module defines. Anything a pod needs to
+# reach must allow THIS one.
+output "eks_managed_cluster_security_group_id" {
+  value = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+}
