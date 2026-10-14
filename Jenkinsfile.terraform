@@ -1,0 +1,64 @@
+// Infra CI: fmt -> validate -> tflint, on every stack. No plan, no apply.
+//
+// This pod has NO cloud credentials of its own (see the 'terraform' pod
+// template in JCasC). `plan` has to read state, and state holds the RDS
+// password -- so "CI can plan" means "CI can read the database password".
+// That is a deliberate decision for later, not a side effect of a lint job.
+pipeline {
+  agent { label 'terraform' }
+
+  options {
+    timeout(time: 20, unit: 'MINUTES')
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    TF_IN_AUTOMATION = '1'  // drops the "run terraform plan next" hints
+    TF_INPUT         = '0'  // never wait on a prompt nobody will answer
+  }
+
+  stages {
+
+    stage('fmt') {
+      steps {
+        container('terraform') {
+          // Whole repo every time, whatever STACK says: a formatting diff
+          // anywhere is a review comment nobody should have to write.
+          sh 'terraform fmt -check -recursive -diff iac/'
+        }
+      }
+    }
+
+    stage('validate') {
+      steps {
+        container('terraform') {
+          sh '''
+            # One provider download per build, not one per stack.
+            export TF_PLUGIN_CACHE_DIR="$PWD/.tf-plugin-cache"
+            mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+            for s in $(ls iac/stacks); do
+              [ "$STACK" = all ] || [ "$STACK" = "$s" ] || continue
+              echo "--- validate $s"
+              # -backend=false: install modules + providers, never touch state.
+              # validate needs provider schemas, so init cannot be skipped.
+              terraform -chdir=iac/stacks/$s init -backend=false -no-color >/dev/null
+              terraform -chdir=iac/stacks/$s validate -no-color
+            done
+          '''
+        }
+      }
+    }
+
+    stage('tflint') {
+      steps {
+        container('tflint') {
+          // Same floor as the pre-commit hook: errors and warnings fail,
+          // notices do not. A finding that only warns is one nobody fixes.
+          sh 'cd iac && tflint --recursive --minimum-failure-severity=warning'
+        }
+      }
+    }
+  }
+}

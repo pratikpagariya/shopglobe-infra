@@ -2,6 +2,9 @@ terraform {
   required_version = ">= 1.9"
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 6.0" }
+    # random_password (DB + JWT). Undeclared, Terraform guesses hashicorp/random
+    # with no version constraint -- tflint flags it, and a guess is not a pin.
+    random = { source = "hashicorp/random", version = "~> 3.9" }
   }
   backend "s3" {
     key            = "stacks/prod/terraform.tfstate"

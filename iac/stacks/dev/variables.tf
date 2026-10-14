@@ -46,8 +46,3 @@ variable "node_groups" {
     })), [])
   }))
 }
-
-variable "admin_role_name" {
-  type        = string
-  description = "IAM role that gets cluster-admin via an Access Entry."
-}

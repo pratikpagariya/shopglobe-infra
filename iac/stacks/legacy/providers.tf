@@ -22,7 +22,6 @@ provider "aws" {
 }
 
 data "aws_availability_zones" "available" { state = "available" }
-data "aws_caller_identity" "current" {}
 
 # Canonical's published AMI id, looked up not hardcoded -- a hardcoded AMI is
 # stale within a month and is region-specific.
@@ -31,7 +30,6 @@ data "aws_ssm_parameter" "ubuntu" {
 }
 
 locals {
-  azs        = slice(data.aws_availability_zones.available.names, 0, 2)
-  name       = "shopglobe-legacy"
-  account_id = data.aws_caller_identity.current.account_id
+  azs  = slice(data.aws_availability_zones.available.names, 0, 2)
+  name = "shopglobe-legacy"
 }

@@ -140,15 +140,47 @@ module "rds" {
 }
 
 module "sqs_payments" {
-  source = "../../modules/sqs"
+  source   = "../../modules/sqs"
+  for_each = local.app_envs
 
-  project     = "shopglobe"
-  environment = var.environment
+  project = "shopglobe"
+  # The APP env, not var.environment, so the names come out
+  # shopglobe-dev-payments, shopglobe-stage-payments, shopglobe-prod-payments.
+  environment = each.key
   queue_name  = "payments"
 
   # payment-worker takes ~0.4s worst case. 30s is ~75x headroom.
   visibility_timeout_seconds = 30
   max_receive_count          = 3
+
+  tags = { AppEnv = each.key }
+}
+
+# The queue that already exists becomes the "prod" instance. Without this,
+# Terraform sees one resource removed and three added, so it would DESTROY the
+# live queue (and every message in it) to recreate it at a new address.
+moved {
+  from = module.sqs_payments
+  to   = module.sqs_payments["prod"]
+}
+
+module "redis" {
+  source = "../../modules/redis"
+
+  project     = "shopglobe"
+  environment = var.environment
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.db_subnet_ids
+
+  # Same two-SG lesson as RDS: pods leave with the EKS-managed cluster SG.
+  allowed_security_group_ids = [
+    module.eks.node_security_group_id,
+    module.eks.eks_managed_cluster_security_group_id,
+  ]
+
+  node_type = var.redis_node_type
+  replicas  = var.redis_replicas
 
   tags = {}
 }
@@ -198,7 +230,8 @@ module "eks" {
 
   # Pod Identity: cluster+namespace+serviceaccount -> IAM role. No OIDC trust
   # policy, no ServiceAccount annotation, and zero static keys in the cluster.
-  pod_identity_associations = {
+  # The 12 app-env associations live in app-envs.tf; these are the platform ones.
+  pod_identity_associations = merge(local.app_pod_identities, {
     cluster-autoscaler = {
       namespace       = "kube-system"
       service_account = "cluster-autoscaler"
@@ -276,7 +309,7 @@ module "eks" {
         ]
       })
     }
-  }
+  })
 
   tags = {}
 }

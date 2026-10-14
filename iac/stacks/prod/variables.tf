@@ -57,7 +57,12 @@ variable "rds_multi_az" {
   default = false # cost lever. true for the one full-fidelity run.
 }
 
-variable "admin_role_name" {
-  type        = string
-  description = "IAM role that gets cluster-admin via an Access Entry."
+variable "redis_node_type" {
+  type    = string
+  default = "cache.t4g.micro"
+}
+
+variable "redis_replicas" {
+  type    = number
+  default = 0 # cost lever. 1 for the full-fidelity weekend -- watch the failover.
 }
