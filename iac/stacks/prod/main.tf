@@ -209,6 +209,13 @@ module "eks" {
   authentication_mode     = "API"
   bootstrap_creator_admin = true
 
+  # The namespace layer ships default-deny NetworkPolicies, and until this was
+  # on they were decorative: the VPC CNI ignores NetworkPolicy unless told
+  # otherwise. Note what it switches on: prod's default-deny-ingress now
+  # really blocks anything from outside the namespace -- an ALB in front of
+  # prod would need its own allow rule.
+  enable_network_policy = true
+
   # bootstrap_creator_admin already created a cluster-admin entry for
   # shopglobe-terraform. An entry is unique per (cluster, principal), so a
   # second entry for the same role is a 409. This one uses a SEPARATE role,

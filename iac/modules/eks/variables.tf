@@ -88,9 +88,16 @@ variable "addon_versions" {
 variable "additional_addons" {
   description = "Additional EKS addons beyond the defaults"
   type = map(object({
-    addon_version = optional(string)
+    addon_version        = optional(string)
+    configuration_values = optional(string) # JSON, as the add-on's schema defines it
   }))
   default = {}
+}
+
+variable "enable_network_policy" {
+  description = "Enforce Kubernetes NetworkPolicy via the VPC CNI's network policy agent. Off, NetworkPolicy objects are accepted by the API server and then silently ignored."
+  type        = bool
+  default     = false
 }
 
 variable "pod_identity_associations" {

@@ -290,19 +290,28 @@ resource "aws_autoscaling_group_tag" "ca_cluster" {
 # EKS Add-ons
 ###############################################################################
 locals {
+  # Every entry carries both keys, so this map has one element type and merges
+  # cleanly with var.additional_addons.
   default_addons = {
     coredns = {
-      addon_version = lookup(var.addon_versions, "coredns", null)
+      addon_version        = lookup(var.addon_versions, "coredns", null)
+      configuration_values = null
     }
     kube-proxy = {
-      addon_version = lookup(var.addon_versions, "kube-proxy", null)
+      addon_version        = lookup(var.addon_versions, "kube-proxy", null)
+      configuration_values = null
     }
     vpc-cni = {
       addon_version = lookup(var.addon_versions, "vpc-cni", null)
+      # Without this, a NetworkPolicy is accepted by the API server and then
+      # silently ignored: nothing enforces it. The VPC CNI's network policy
+      # agent (eBPF, on every node) is what turns policy into packet filtering.
+      configuration_values = var.enable_network_policy ? jsonencode({ enableNetworkPolicy = "true" }) : null
     }
     # Pod Identity Agent — required for EKS Pod Identity
     eks-pod-identity-agent = {
-      addon_version = lookup(var.addon_versions, "eks-pod-identity-agent", null)
+      addon_version        = lookup(var.addon_versions, "eks-pod-identity-agent", null)
+      configuration_values = null
     }
   }
 
@@ -315,6 +324,7 @@ resource "aws_eks_addon" "this" {
   cluster_name                = aws_eks_cluster.this.name
   addon_name                  = each.key
   addon_version               = each.value.addon_version
+  configuration_values        = each.value.configuration_values
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
